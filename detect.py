@@ -106,9 +106,17 @@ for img_i, (path, detections) in enumerate(zip(imgs, img_detections)):
         unique_labels = detections[:, -1].cpu().unique()
         n_cls_preds = len(unique_labels)
         bbox_colors = random.sample(colors, n_cls_preds)
+        print(detections.shape)
+        print(detections)
         for x1, y1, x2, y2, conf, cls_conf, cls_pred in detections:
+            c0=(y2+y1)/2
+            c1=(x2+x1)/2
+            s0=(y2-y1)
+            s1=(x2-x1)
+            cs=np.array_str(np.array([c0,c1,s0,s1]), precision=3)
 
-            print ('\t+ Label: %s, Conf: %.5f' % (classes[int(cls_pred)], cls_conf.item()))
+            print ('\t+ Label: %s, Conf: %.5f' % (classes[int(cls_pred)], cls_conf.item()), cs)
+
 
             # Rescale coordinates to original dimensions
             box_h = ((y2 - y1) / unpad_h) * img.shape[0]

@@ -144,21 +144,38 @@ def non_max_suppression(prediction, num_classes, conf_thres=0.5, nms_thres=0.4):
     for image_i, image_pred in enumerate(prediction):
         # Filter out confidence scores below threshold
         conf_mask = (image_pred[:, 4] >= conf_thres).squeeze()
+        print(np.arange(len(conf_mask))[np.array(conf_mask).astype(np.bool)])
         image_pred = image_pred[conf_mask]
+
+
         # If none are remaining => process next image
         if not image_pred.size(0):
             continue
         # Get score and class with highest confidence
         class_conf, class_pred = torch.max(image_pred[:, 5 : 5 + num_classes], 1, keepdim=True)
         # Detections ordered as (x1, y1, x2, y2, obj_conf, class_conf, class_pred)
-        detections = torch.cat((image_pred[:, :5], class_conf.float(), class_pred.float()), 1)
+        detections = torch.cat((image_pred[:, :5], class_conf.float(), class_pred.float(),image_pred[:,  5 + num_classes:]), 1)
+
+        _, iii = torch.sort(detections[:, 4], descending=True)
+        detections_sort = detections[iii]
+        detections_sort_c=(detections_sort[:,:2]+detections_sort[:,2:4])/2
+        detections_sort_s=(detections_sort[:,2:4]-detections_sort[:,:2])
+        detections_sort[:,0]=detections_sort_c[:,1]
+        detections_sort[:,1]=detections_sort_c[:,0]
+        detections_sort[:,2]=detections_sort_s[:,1]
+        detections_sort[:,3]=detections_sort_s[:,0]
+
+
+        print(f"Predictions before NMS: {len(detections_sort)}")
+        print(np.array_str(np.array(detections_sort), precision=3,suppress_small=True,max_line_width=200))
+
         # Iterate through all predicted classes
-        unique_labels = detections[:, -1].cpu().unique()
+        unique_labels = detections[:, 6].cpu().unique()
         if prediction.is_cuda:
             unique_labels = unique_labels.cuda()
         for c in unique_labels:
             # Get the detections with the particular class
-            detections_class = detections[detections[:, -1] == c]
+            detections_class = detections[detections[:, 6] == c]
             # Sort the detections by maximum objectness confidence
             _, conf_sort_index = torch.sort(detections_class[:, 4], descending=True)
             detections_class = detections_class[conf_sort_index]
@@ -180,6 +197,18 @@ def non_max_suppression(prediction, num_classes, conf_thres=0.5, nms_thres=0.4):
             output[image_i] = (
                 max_detections if output[image_i] is None else torch.cat((output[image_i], max_detections))
             )
+
+        out=output[image_i]
+
+        out_c=(out[:,:2]+out[:,2:4])/2
+        out_s=(out[:,2:4]-out[:,:2])
+        out[:,0]=out_c[:,1]
+        out[:,1]=out_c[:,0]
+        out[:,2]=out_s[:,1]
+        out[:,3]=out_s[:,0]
+        print(f"Predictions after NMS: {len(out)}")
+        print(np.array_str(np.array(out), precision=3,suppress_small=True,max_line_width=200))
+
 
     return output
 

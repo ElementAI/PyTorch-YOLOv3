@@ -150,6 +150,14 @@ class YOLOLayer(nn.Module):
         pred_boxes[..., 2] = torch.exp(w.data) * anchor_w
         pred_boxes[..., 3] = torch.exp(h.data) * anchor_h
 
+        print(pred_boxes.shape)
+        print(grid_x.shape)
+        pred_stride=torch.ones_like(pred_conf)*stride
+        pred_grid_x=grid_x.repeat(nB, nA, 1, 1)
+        pred_grid_y=grid_y.repeat(nB, nA, 1, 1)
+        pred_anchor=torch.arange(nA)[None,:,None,None].repeat(
+            nB,1,nG,nG).type(FloatTensor)
+
         # Training
         if targets is not None:
 
@@ -221,9 +229,14 @@ class YOLOLayer(nn.Module):
                     pred_boxes.view(nB, -1, 4) * stride,
                     pred_conf.view(nB, -1, 1),
                     pred_cls.view(nB, -1, self.num_classes),
+                    pred_stride.view(nB, -1, 1),
+                    pred_grid_y.view(nB, -1, 1),
+                    pred_grid_x.view(nB, -1, 1),
+                    pred_anchor.view(nB, -1, 1)
                 ),
                 -1,
             )
+            print(output.shape)
             return output
 
 
@@ -244,6 +257,26 @@ class Darknet(nn.Module):
         output = []
         self.losses = defaultdict(float)
         layer_outputs = []
+
+        print("Input")
+        print(x.min(),x.max(), x.mean())
+        print(x.shape)
+        print(x[0].shape)
+        print(x[0])
+
+        print("Weight")
+        print(self.module_list[0][0].weight)
+        print("Bias")
+        print(self.module_list[0][0].bias)
+        print("BN bias")
+        print(self.module_list[0][1].bias)
+        print("BN weight")
+        print(self.module_list[0][1].weight)
+        print("BN mean")
+        print(self.module_list[0][1].running_mean)
+        print("BN var")
+        print(self.module_list[0][1].running_var)
+
         for i, (module_def, module) in enumerate(zip(self.module_defs, self.module_list)):
             if module_def["type"] in ["convolutional", "upsample", "maxpool"]:
                 x = module(x)
@@ -264,6 +297,12 @@ class Darknet(nn.Module):
                     x = module(x)
                 output.append(x)
             layer_outputs.append(x)
+
+        for i, o in enumerate(layer_outputs):
+            print(f"Output {i}")
+            print(self.module_list[i])
+            print(o[0].shape)
+            print(o[0])
 
         self.losses["recall"] /= 3
         self.losses["precision"] /= 3
@@ -287,11 +326,14 @@ class Darknet(nn.Module):
         for i, (module_def, module) in enumerate(zip(self.module_defs, self.module_list)):
             if module_def["type"] == "convolutional":
                 conv_layer = module[0]
+                print("Loading module: "+str(module))
+                print(f"Pointer at {ptr}")
                 if module_def["batch_normalize"]:
                     # Load BN bias, weights, running mean and running variance
                     bn_layer = module[1]
                     num_b = bn_layer.bias.numel()  # Number of biases
                     # Bias
+                    print(f"Loading 4x{num_b} BN variables ({list(bn_layer.bias.shape)})")
                     bn_b = torch.from_numpy(weights[ptr : ptr + num_b]).view_as(bn_layer.bias)
                     bn_layer.bias.data.copy_(bn_b)
                     ptr += num_b
@@ -310,14 +352,17 @@ class Darknet(nn.Module):
                 else:
                     # Load conv. bias
                     num_b = conv_layer.bias.numel()
+                    print(f"Loading {num_b} bias variables ({list(conv_layer.bias.shape)})")
                     conv_b = torch.from_numpy(weights[ptr : ptr + num_b]).view_as(conv_layer.bias)
                     conv_layer.bias.data.copy_(conv_b)
                     ptr += num_b
                 # Load conv. weights
                 num_w = conv_layer.weight.numel()
+                print(f"Loading {num_w} weight variables ({list(conv_layer.weight.shape)})")
                 conv_w = torch.from_numpy(weights[ptr : ptr + num_w]).view_as(conv_layer.weight)
                 conv_layer.weight.data.copy_(conv_w)
                 ptr += num_w
+        print(self)
 
     """
         @:param path    - path of the new weights file
